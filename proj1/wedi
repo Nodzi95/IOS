@@ -1,0 +1,171 @@
+#!/bin/sh
+
+#test utility realpath
+if `realpath $HOME >/dev/null 2>&1`; then
+	:
+else echo "Na vasem stroji neni nainstalovana utilita realpath"; exit 1
+fi
+
+#overeni nastaveni promenne WEDI_RC
+if [ -w "$WEDI_RC" ]; then
+        :
+else 	if `touch $WEDI_RC >/dev/null 2>&1`; then
+		:
+	else echo "Chyba nacteni promenne WEDI_RC"; exit 1
+	fi
+fi
+#overeni nastaveni promennych VISUAL a EDITOR
+if [ "$EDITOR" ]; then
+	:
+elif [ "$VISUAL" ]; then
+	EDITOR=$VISUAL
+else echo "Nebyla nastavena promenna EDITOR ani VISUAL"; exit 1
+fi
+#nastaveni promenne DIR na aktualni adresar
+DIR=`realpath .`
+#smaze zaznamy jiz neexistujicich souboru
+count=1
+while true
+do
+        try=`grep ^ $WEDI_RC |cut -f1 -d\ |awk 'NR=='$count''`
+        if [ -e "$try" ]; then
+                count=`expr $count + 1`
+        else echo "`sed ''$count'd' $WEDI_RC`" >$WEDI_RC
+        fi
+        if [ "$try" = "" ]; then
+                break
+        else continue
+        fi
+done
+
+datum_vetsi_nez () {
+        pocet_radku=`egrep ^$2 $WEDI_RC | sed -e "s|$2/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u | wc -l`
+        date=`echo $1 | tr -d "-"`
+        count=1
+        while [ $count -le $pocet_radku ]
+        do
+                nazev=`grep ^$2 $WEDI_RC | sed -e "s|$2/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u | sed -n "$count"p`
+                datum=`grep ^$2/$nazev $WEDI_RC | sort -u | cut -f2 -d\ | tail -n1 | tr -d "-"`
+                if [ $datum -ge $date ]; then
+                        echo "$nazev"
+                else :
+                fi
+                count=`expr $count + 1`
+        done
+}
+
+datum_mensi_nez () {
+        pocet_radku=`egrep ^$2 $WEDI_RC | sed -e "s|$2/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u | wc -l`
+        date=`echo $1 | tr -d "-"`
+        count=1
+        while [ $count -le $pocet_radku ]
+        do
+                nazev=`grep ^$2 $WEDI_RC | sed -e "s|$2/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u | sed -n "$count"p`
+                datum=`grep ^$2/$nazev $WEDI_RC | sort -u | cut -f2 -d\ |head -n1 | tr -d "-"`
+                if [ $datum -le $date ]; then
+                        echo "$nazev"
+                else :
+                fi
+                count=`expr $count + 1`
+        done    
+}
+
+
+
+#Zpracováni argumentů skriptu wedi
+if [ "$1" = "-m" ]						
+then
+	#pokud je druhy argument adresar, zmeni se proměnná DIR
+	if [ -d "$2" ]; then
+		DIR=`realpath "$2"`
+		adr=`egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | sort | uniq -c | sort | rev | cut -f1 -d\ | rev | tail -n1`
+		adr=$DIR/$adr
+	elif [ "$2" = "" ]; then
+		adr=`egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | sort | uniq -c | sort | rev | cut -f1 -d\ | rev | tail -n1`
+		adr=$DIR/$adr
+	else	echo "Chybne zadany adresar"; exit 1
+	fi
+        if [ -f "$adr" ]; then
+                $EDITOR $adr
+        else    echo "V adresari jeste neni zadny editovany soubor"; exit 1
+        fi
+	echo "$adr" "$(date +%F)" >>$WEDI_RC
+
+elif [ "$1" = "-l" ]
+then
+	if [ -d "$2" ]
+        then
+                DIR=`realpath $2`
+ 		egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u
+        elif [ "$2" = "" ]
+        then
+                egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | sort -u
+        else    echo "Chybne zadany adresar"; exit 1
+        fi
+
+elif [ "$1" = "-b" ]
+then
+		if `echo $2 |grep ^"[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"$ >/dev/null`; then
+			:
+		else echo "Spatne zadany format DATUM"; exit 1
+		fi
+		if [ -d "$3" ]; then
+               		 DIR=`realpath $3`
+                	datum_mensi_nez $2 $DIR
+      		elif [ "$3" = "" ]; then
+                	datum_mensi_nez $2 $DIR
+        	else    echo "Chybne zadany adresar"; exit 1
+        	fi
+
+elif [ "$1" = "-a" ]
+then                                                     
+		if `echo $2 |grep ^"[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"$ >/dev/null`; then
+                        :
+                else echo "Spatne zadany format DATUM"; exit 1
+		fi
+		if [ -d "$3" ]
+        	then
+        	        DIR=`realpath $3`
+        	        datum_vetsi_nez $2 $DIR
+        	elif [ "$3" = "" ]
+        	then
+        	        datum_vetsi_nez $2 $DIR
+        	else    echo "Chybne zadany adresar"; exit 1
+        	fi
+
+elif [ "$1" = "" ]
+then
+        adr=`egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | tail -n1`
+	adr=$DIR/$adr
+	if [ -f "$adr" ]; then
+                $EDITOR $adr
+        else    echo "V adresari jeste neni zadny editovany soubor"; exit 1
+        fi
+	echo "$adr" "$(date +%F)" >>$WEDI_RC
+
+elif [ -d "$1" ]
+then
+        DIR=`realpath $1`
+        adr=`egrep ^$DIR $WEDI_RC | sed -e "s|$DIR/||g" | grep -v ^".*/" | cut -f1 -d\ | tail -n1`
+	adr=$DIR/$adr
+	if [ -f "$adr" ]; then
+                $EDITOR $adr
+        else    echo "V adresari jeste neni zadny editovany soubor"; exit 1
+        fi
+	echo "$adr" "$(date +%F)" >>$WEDI_RC
+
+elif [ -e "$1" ]; then
+	DIR=`realpath "$1"`
+	$EDITOR $DIR
+	hm=`awk 'NR==1' $WEDI_RC`
+	if [ -z "$hm" ]; then
+		echo "$DIR" "$(date +%F)" >$WEDI_RC
+	else	echo "$DIR" "$(date +%F)" >>$WEDI_RC
+	fi
+
+else echo "Chybne zadana cesta k souboru" ; exit 1
+fi
+
+exit 0                                                                              
+~                                                                               
+~                               
